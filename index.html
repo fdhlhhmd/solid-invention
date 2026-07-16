@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML to PNG Live Converter</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Checkered background to clearly show transparent areas in the preview */
+        .bg-checkerboard {
+            background-color: #e5e5f7;
+            opacity: 1;
+            background-image:  repeating-linear-gradient(45deg, #c4c4c4 25%, transparent 25%, transparent 75%, #c4c4c4 75%, #c4c4c4), repeating-linear-gradient(45deg, #c4c4c4 25%, #e5e5f7 25%, #e5e5f7 75%, #c4c4c4 75%, #c4c4c4);
+            background-position: 0 0, 10px 10px;
+            background-size: 20px 20px;
+        }
+
+        /* Custom scrollbar for the editor */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="h-screen flex flex-col bg-gray-50 text-gray-800 overflow-hidden">
+
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900 leading-tight">Visual HTML to PNG</h1>
+                <p class="text-xs text-gray-500">Render visual output and export as image</p>
+            </div>
+        </div>
+        <button id="download-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-5 rounded-lg shadow transition-colors flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            <span>Download PNG</span>
+        </button>
+    </header>
+
+    <main class="flex-grow flex flex-col md:flex-row overflow-hidden">
+        
+        <!-- Left Column: Code Editor with Tabs -->
+        <section class="w-full md:w-1/2 h-1/2 md:h-full flex flex-col border-r border-gray-200 bg-gray-900">
+            <div class="bg-gray-800 text-gray-300 text-sm flex justify-between items-center border-b border-gray-700">
+                <div class="flex" id="tabs">
+                    <button class="tab-btn active px-5 py-2.5 bg-gray-900 border-t-2 border-blue-500 text-white font-mono" data-tab="html">HTML</button>
+                    <button class="tab-btn px-5 py-2.5 bg-gray-800 hover:bg-gray-700 border-t-2 border-transparent font-mono transition-colors" data-tab="css">CSS</button>
+                    <button class="tab-btn px-5 py-2.5 bg-gray-800 hover:bg-gray-700 border-t-2 border-transparent font-mono transition-colors" data-tab="js">JS</button>
+                </div>
+                <button id="reset-btn" class="px-4 text-xs hover:text-white transition-colors">Reset Example</button>
+            </div>
+            
+            <textarea id="html-input" class="code-editor flex-grow w-full bg-gray-900 text-green-400 font-mono text-sm p-4 outline-none resize-none" spellcheck="false" placeholder="<!-- Enter HTML here -->"></textarea>
+            <textarea id="css-input" class="code-editor hidden flex-grow w-full bg-gray-900 text-blue-400 font-mono text-sm p-4 outline-none resize-none" spellcheck="false" placeholder="/* Enter CSS here */"></textarea>
+            <textarea id="js-input" class="code-editor hidden flex-grow w-full bg-gray-900 text-yellow-400 font-mono text-sm p-4 outline-none resize-none" spellcheck="false" placeholder="// Enter JavaScript here"></textarea>
+        </section>
+
+        <!-- Right Column: Live Visual Preview -->
+        <section class="w-full md:w-1/2 h-1/2 md:h-full flex flex-col relative">
+            <div class="bg-white text-gray-700 text-sm py-2 px-4 border-b border-gray-200 flex justify-between items-center shadow-sm z-10">
+                <span class="font-semibold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Live Visual Output
+                </span>
+                <span class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">What you see is what gets exported</span>
+            </div>
+            
+            <div class="flex-grow bg-checkerboard overflow-hidden relative">
+                <!-- We use a sandboxed iframe to securely execute JS and isolate CSS -->
+                <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin" class="w-full h-full border-0 pointer-events-auto"></iframe>
+
+                <!-- Loading Overlay -->
+                <div id="loading-overlay" class="absolute inset-0 bg-white/80 hidden flex-col items-center justify-center backdrop-blur-sm z-20">
+                    <svg class="animate-spin h-10 w-10 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-gray-800 font-medium">Capturing Image...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const sampleHtml = `<div class="card" id="myCard">
+    <div class="icon">✨</div>
+    <h2>Interactive Card</h2>
+    <p>This design is powered by separate HTML, CSS, and JS tabs.</p>
+    <button id="actionBtn">Click to change color!</button>
+</div>`;
+
+        const sampleCss = `.card {
+    background: linear-gradient(135deg, #FF6B6B 0%, #FFE66D 100%);
+    padding: 3rem;
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    width: 350px;
+    color: #2D3436;
+    text-align: center;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.3s ease;
+}
+
+.icon {
+    width: 80px;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+h2 { margin: 0 0 0.5rem 0; font-size: 1.8rem; }
+p { margin: 0 0 1.5rem 0; color: #444; line-height: 1.5; font-size: 0.95rem; }
+
+button {
+    background: #2D3436;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.1s;
+}
+
+button:active {
+    transform: scale(0.95);
+}`;
+
+        const sampleJs = `const btn = document.getElementById('actionBtn');
+const card = document.getElementById('myCard');
+const colors = [
+    'linear-gradient(135deg, #FF6B6B 0%, #FFE66D 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+];
+let count = 0;
+
+// Adding interactivity using JS
+btn.addEventListener('click', () => {
+    count++;
+    card.style.background = colors[count % colors.length];
+    btn.innerText = 'Clicked ' + count + ' time' + (count !== 1 ? 's' : '');
+});`;
+
+        const htmlInput = document.getElementById('html-input');
+        const cssInput = document.getElementById('css-input');
+        const jsInput = document.getElementById('js-input');
+        const previewFrame = document.getElementById('preview-frame');
+        const downloadBtn = document.getElementById('download-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const editors = document.querySelectorAll('.code-editor');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Reset tab styles
+                tabBtns.forEach(b => {
+                    b.classList.remove('active', 'bg-gray-900', 'border-blue-500', 'text-white');
+                    b.classList.add('bg-gray-800', 'border-transparent', 'text-gray-300');
+                });
+                editors.forEach(e => e.classList.add('hidden'));
+
+                // Apply active styles to clicked tab
+                btn.classList.remove('bg-gray-800', 'border-transparent', 'text-gray-300');
+                btn.classList.add('active', 'bg-gray-900', 'border-blue-500', 'text-white');
+                
+                // Show matched editor
+                const tabId = btn.getAttribute('data-tab');
+                document.getElementById(`${tabId}-input`).classList.remove('hidden');
+            });
+        });
+
+        function updatePreview() {
+            const html = htmlInput.value;
+            const css = cssInput.value;
+            const js = jsInput.value;
+
+            // We generate a full HTML document string and inject it into the iframe.
+            // This perfectly isolates the CSS and safely executes the JS.
+            const srcDoc = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        /* Base styles to center the content inside the iframe */
+                        body { 
+                            margin: 0; 
+                            padding: 3rem; 
+                            display: flex; 
+                            justify-content: center; 
+                            align-items: flex-start;
+                            background: transparent;
+                            min-height: 100vh;
+                            box-sizing: border-box;
+                        }
+                        /* This is the wrapper we will target for the screenshot */
+                        #export-target {
+                            display: inline-block;
+                            position: relative;
+                        }
+                        /* User's Custom CSS */
+                        ${css}
+                    </style>
+                </head>
+                <body>
+                    <div id="export-target">
+                        ${html}
+                    </div>
+                    <script>
+                        try {
+                            // User's Custom JS
+                            ${js}
+                        } catch(e) {
+                            console.error("User JS Error:", e);
+                        }
+                    <\/script>
+                </body>
+                </html>
+            `;
+            
+            previewFrame.srcdoc = srcDoc;
+        }
+
+        // Initialize the app with sample code
+        htmlInput.value = sampleHtml;
+        cssInput.value = sampleCss;
+        jsInput.value = sampleJs;
+        updatePreview();
+
+        // Listen for typing events and Tab key presses across all 3 editors
+        [htmlInput, cssInput, jsInput].forEach(input => {
+            input.addEventListener('input', updatePreview);
+            
+            // Enable Tab key support for indentation
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    
+                    const start = this.selectionStart;
+                    const end = this.selectionEnd;
+                    
+                    // We use 4 spaces for a tab
+                    const spaces = "    ";
+                    
+                    // Set textarea value to: text before caret + tab + text after caret
+                    this.value = this.value.substring(0, start) + spaces + this.value.substring(end);
+                    
+                    // Put caret at right position again
+                    this.selectionStart = this.selectionEnd = start + spaces.length;
+                    
+                    // Trigger update preview since we changed the value programmatically
+                    updatePreview();
+                }
+            });
+        });
+
+        // Reset button
+        resetBtn.addEventListener('click', () => {
+            htmlInput.value = sampleHtml;
+            cssInput.value = sampleCss;
+            jsInput.value = sampleJs;
+            updatePreview();
+        });
+
+        downloadBtn.addEventListener('click', async () => {
+            if (!htmlInput.value.trim()) {
+                alert('Please enter some HTML code first.');
+                return;
+            }
+
+            loadingOverlay.classList.remove('hidden');
+            loadingOverlay.classList.add('flex');
+            downloadBtn.disabled = true;
+            const originalBtnContent = downloadBtn.innerHTML;
+            downloadBtn.innerHTML = 'Capturing...';
+
+            try {
+                // Reach into the iframe's internal DOM
+                const iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+                const targetElement = iframeDoc.getElementById('export-target');
+
+                if (!targetElement) throw new Error("Could not find export target in iframe");
+
+                // Wait slightly in case of pending JS animations
+                await new Promise(resolve => setTimeout(resolve, 150));
+
+                // html2canvas captures ONLY the specific wrapper element inside the iframe
+                const canvas = await html2canvas(targetElement, {
+                    backgroundColor: null, // Keeps background transparent
+                    scale: 2, // Retina resolution
+                    useCORS: true,
+                    logging: false
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                
+                // Trigger download
+                const link = document.createElement('a');
+                link.download = `web-export-${Date.now()}.png`;
+                link.href = imgData;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (error) {
+                console.error('Error generating image:', error);
+                alert('There was a problem generating the image. This sometimes happens if external assets block canvas reading via CORS.');
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                loadingOverlay.classList.remove('flex');
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = originalBtnContent;
+            }
+        });
+    </script>
+</body>
+</html>
